@@ -5,6 +5,7 @@ from ui_mainwindow import Ui_MainWindow
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import QTimer, QCoreApplication
 from PyQt5.QtWidgets import *
+from PyQt5.QtCore import Qt
 
 #from PyQt5.QtCore import qRegisterMetaType, QVector
 
@@ -20,7 +21,7 @@ class SnifferApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.sniff_thread = None
         self.packetCounter = 0
         self.packet_storage = [] #存储数据包 -> queue
-
+        
         self.setupUi(self) #UI
         self.show_network_interface() #填充网卡下拉框
         self.clicked_connect() #点击事件处理
@@ -60,7 +61,8 @@ class SnifferApp(QtWidgets.QMainWindow, Ui_MainWindow):
             print(select_interface) 
             print(filter_condition)
             self.sniff_thread = PacketSniffer(select_interface, filter_condition)
-            self.sniff_thread.packet_received.connect(self.update_packet_list)  # 连接信号
+            #self.sniff_thread.packet_received.connect(self.update_packet_list)  # 连接信号
+            self.sniff_thread.packet_received.connect(self.update_packet_list, Qt.BlockingQueuedConnection)  # 使用阻塞队列连接
             self.sniff_thread.start()
 
         except PermissionError as e:
@@ -72,8 +74,6 @@ class SnifferApp(QtWidgets.QMainWindow, Ui_MainWindow):
         try:
             if self.sniff_thread:
                 self.sniff_thread.stop()
-                #self.sniff_thread.terminate()
-                #self.sniff_thread.wait()
             print("stoped")
 
         except Exception as e:
@@ -88,34 +88,34 @@ class SnifferApp(QtWidgets.QMainWindow, Ui_MainWindow):
         print(self.packetCounter)
        
         pkt_hex = hexdump(packet,dump=True) ## 获取原始内容
-        print(f"hex{pkt_hex}")
-        print('packet:')
-        print(packet)
+        # print(f"hex{pkt_hex}")
+        # print('packet:')
+        # print(packet)
 
         #time
         packet_time = datetime.fromtimestamp(packet.time).strftime('%Y-%m-%d %H:%M:%S')  # 获取捕获时间并格式化
-        print(packet_time)
+        # print(packet_time)
         #src dst
         if IP in packet:
-            print("ip in packet")
+            # print("ip in packet")
             src = packet[IP].src
             dst = packet[IP].dst
         else :
             src = packet.src
             dst = packet.dst
-        print(src)
-        print(dst)
+        # print(src)
+        # print(dst)
         #protocol
         layer = None
         for var in self.get_packet_layers(packet):
             if not isinstance(var,(Padding, Raw)):
                 layer = var #找到第一个有效层，非padding和非raw层
         protocol = layer.name 
-        print(protocol)
+        # print(protocol)
 
         #length
         length = f"{len(packet)}"
-        print(length)
+        # print(length)
 
         #info
         try:
@@ -206,29 +206,23 @@ class SnifferApp(QtWidgets.QMainWindow, Ui_MainWindow):
 
     #generate_pdf
     def save_current_packet(self):
-        # Check if the packet list is empty
         if not self.packet_storage:
             QtWidgets.QMessageBox.warning(self, "警告", "没有数据包可保存。")
             return
 
-        # Get the selected item in the packet list
         selected_item = self.packetListWidget.currentItem()
         if not selected_item:
             QtWidgets.QMessageBox.warning(self, "警告", "请选择一个数据包进行保存。")
             return
         
-        # Get the index of the selected item
         selected_row = selected_item.row()
-        # Get the corresponding packet from storage
         selected_packet = self.packet_storage[selected_row]
 
-        # Ask user for the file name to save the PDF
         options = QFileDialog.Options()
         self.filename, _ = QFileDialog.getSaveFileName(self, "保存当前数据包为PDF", "", "PDF Files (*.pdf);;All Files (*)", options=options)
         
         if self.filename:
             try:
-                # Use Scapy's function to write the packet details to a PDF
                 selected_packet.canvas_dump().writePDFfile(self.filename)
                 QtWidgets.QMessageBox.information(self, "成功", "当前数据包已成功保存为PDF。")
             except Exception as e:
